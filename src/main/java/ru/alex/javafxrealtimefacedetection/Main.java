@@ -16,17 +16,22 @@ import org.opencv.videoio.VideoCapture;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
-import java.util.concurrent.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 
 public class Main extends Application {
-    static { System.loadLibrary(Core.NATIVE_LIBRARY_NAME); }
+    static {
+        System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
+    }
 
     private CascadeClassifier frontalFaceCascade;
     private CascadeClassifier profileFaceCascade;
     private VideoCapture capture;
     private SerialPort comPort;
     private ScheduledExecutorService executorService;
+
     public static void main(String[] args) {
         launch(args);
     }
@@ -43,7 +48,7 @@ public class Main extends Application {
         // Создание периодической задачи для проверки доступных портов
         executorService = Executors.newSingleThreadScheduledExecutor();
         executorService.scheduleAtFixedRate(this::checkAndOpenPort, 0, 1, TimeUnit.SECONDS);
-        //  Распознавание лиц в режиме реального времени
+        // Модели распознавание лица в режиме реального времени
         frontalFaceCascade = new CascadeClassifier();
         frontalFaceCascade.load("./src/main/resources/haarcascades/haarcascade_frontalface_alt.xml");
 
@@ -63,6 +68,8 @@ public class Main extends Application {
             }
         }.start();
     }
+
+    // Проверка и открытие порта
     private void checkAndOpenPort() {
         if (comPort == null || !comPort.isOpen()) {
             SerialPort[] commPorts = SerialPort.getCommPorts();
@@ -72,6 +79,8 @@ public class Main extends Application {
             }
         }
     }
+
+    // Преобразование Mat в Image
     public Image mat2Img(Mat mat) {
         MatOfByte bytes = new MatOfByte();
         Imgcodecs.imencode(".jpg", mat, bytes);
@@ -79,6 +88,7 @@ public class Main extends Application {
         return new Image(inputStream);
     }
 
+    // Получение изображения с распознаванием лица
     public Image getCaptureWithFaceDetection() {
         Mat mat = new Mat();
         capture.read(mat);
@@ -88,7 +98,7 @@ public class Main extends Application {
         return mat2Img(haarClassifiedImg);
     }
 
-
+    // Распознавание лица в режиме реального времени
     public Mat detectFace(Mat inputFrame) {
         MatOfRect frontalFaces = new MatOfRect();
         frontalFaceCascade.detectMultiScale(inputFrame, frontalFaces);
@@ -99,7 +109,7 @@ public class Main extends Application {
                 // Отправка координаты X центра лица на Arduino, если порт открыт
                 if (comPort != null && comPort.isOpen()) {
                     int faceCenterX = rect.x + rect.width / 2;
-                    String message = Integer.toString(faceCenterX) + "\n";
+                    String message = faceCenterX + "\n";
                     comPort.writeBytes(message.getBytes(), message.getBytes().length);
                 }
             }
