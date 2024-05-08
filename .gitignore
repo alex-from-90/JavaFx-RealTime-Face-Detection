@@ -39,5 +39,5 @@ build/
 /.idea/
 !/mvnw.cmd
 !/mvnw
-!/.idea/
+!.idea/
 !/.mvn/
