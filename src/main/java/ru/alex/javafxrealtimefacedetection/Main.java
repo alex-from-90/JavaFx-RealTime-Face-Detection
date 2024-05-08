@@ -16,6 +16,8 @@ import org.opencv.videoio.VideoCapture;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.util.concurrent.*;
+
 
 public class Main extends Application {
     static { System.loadLibrary(Core.NATIVE_LIBRARY_NAME); }
@@ -24,7 +26,7 @@ public class Main extends Application {
     private CascadeClassifier profileFaceCascade;
     private VideoCapture capture;
     private SerialPort comPort;
-
+    private ScheduledExecutorService executorService;
     public static void main(String[] args) {
         launch(args);
     }
@@ -38,7 +40,9 @@ public class Main extends Application {
         Scene scene = new Scene(hbox);
         stage.setScene(scene);
         stage.show();
-
+        // Создание периодической задачи для проверки доступных портов
+        executorService = Executors.newSingleThreadScheduledExecutor();
+        executorService.scheduleAtFixedRate(this::checkAndOpenPort, 0, 1, TimeUnit.SECONDS);
         //  Распознавание лиц в режиме реального времени
         frontalFaceCascade = new CascadeClassifier();
         frontalFaceCascade.load("./src/main/resources/haarcascades/haarcascade_frontalface_alt.xml");
@@ -46,9 +50,11 @@ public class Main extends Application {
         profileFaceCascade = new CascadeClassifier();
         profileFaceCascade.load("./src/main/resources/haarcascades/haarcascade_profileface.xml");
 
-        // Настройка последовательного порта
-        comPort = SerialPort.getCommPorts()[0];
-        comPort.openPort();
+        // Настройка последовательного порта, если доступны порты
+        if (SerialPort.getCommPorts().length > 0) {
+            comPort = SerialPort.getCommPorts()[0];
+            comPort.openPort();
+        }
 
         new AnimationTimer() {
             @Override
@@ -57,7 +63,15 @@ public class Main extends Application {
             }
         }.start();
     }
-
+    private void checkAndOpenPort() {
+        if (comPort == null || !comPort.isOpen()) {
+            SerialPort[] commPorts = SerialPort.getCommPorts();
+            if (commPorts.length > 0) {
+                comPort = commPorts[0];
+                comPort.openPort();
+            }
+        }
+    }
     public Image mat2Img(Mat mat) {
         MatOfByte bytes = new MatOfByte();
         Imgcodecs.imencode(".jpg", mat, bytes);
@@ -82,10 +96,12 @@ public class Main extends Application {
         if (frontalFaces.toArray().length > 0) {
             for (Rect rect : frontalFaces.toArray()) {
                 Imgproc.rectangle(inputFrame, rect.tl(), rect.br(), new Scalar(0, 0, 255), 3);
-                // Отправка координаты X центра лица на Arduino
-                int faceCenterX = rect.x + rect.width / 2;
-                String message = Integer.toString(faceCenterX) + "\n";
-                comPort.writeBytes(message.getBytes(), message.getBytes().length);
+                // Отправка координаты X центра лица на Arduino, если порт открыт
+                if (comPort != null && comPort.isOpen()) {
+                    int faceCenterX = rect.x + rect.width / 2;
+                    String message = Integer.toString(faceCenterX) + "\n";
+                    comPort.writeBytes(message.getBytes(), message.getBytes().length);
+                }
             }
         } else {
             MatOfRect profileFaces = new MatOfRect();
@@ -98,9 +114,13 @@ public class Main extends Application {
         return inputFrame;
     }
 
+
     @Override
     public void stop() {
-        // Закрытие порта при завершении программы
-        comPort.closePort();
+        // Закрытие порта и остановка задачи при завершении программы
+        if (comPort != null) {
+            comPort.closePort();
+        }
+        executorService.shutdown();
     }
 }
