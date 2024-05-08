@@ -37,3 +37,7 @@ build/
 /src/main/resources/dnn/
 /.mvn/
 /.idea/
+!/mvnw.cmd
+!/mvnw
+!/.idea/
+!/.mvn/
